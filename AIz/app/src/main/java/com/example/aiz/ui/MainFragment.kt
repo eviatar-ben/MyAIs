@@ -12,7 +12,9 @@ import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import com.example.aiz.UserPrefs
 import com.example.aiz.databinding.FragmentMainBinding
+import com.example.aiz.model.SceneAnalysisResponse
 import com.google.android.material.snackbar.Snackbar
 
 class MainFragment : Fragment() {
@@ -34,7 +36,7 @@ class MainFragment : Fragment() {
             cursor?.use {
                 if (it.moveToFirst()) {
                     val dur = it.getLong(0)
-                    if (dur > vm.MAX_VIDEO_LENGTH_SEC * 1000) {
+                    if (dur > MainViewModel.MAX_VIDEO_LENGTH_SEC * 1000) {
                         Snackbar.make(b.root, "Video too long", Snackbar.LENGTH_LONG).show()
                         return@registerForActivityResult
                     }
@@ -71,7 +73,7 @@ class MainFragment : Fragment() {
 
         b.btnRecord.setOnClickListener {
             val i = Intent(MediaStore.ACTION_VIDEO_CAPTURE)
-                .putExtra(MediaStore.EXTRA_DURATION_LIMIT, vm.MAX_VIDEO_LENGTH_SEC)
+                .putExtra(MediaStore.EXTRA_DURATION_LIMIT, MainViewModel.MAX_VIDEO_LENGTH_SEC)
             recordLauncher.launch(i)
         }
         b.btnUpload.setOnClickListener {
@@ -83,14 +85,22 @@ class MainFragment : Fragment() {
 
     private fun handleVideo(uri: Uri) = vm.uploadVideo(uri)
 
-    private fun show(resp: com.example.aiz.model.SceneAnalysisResponse) {
-        resp.text?.let { b.resultText = it }
-        resp.audioUrl?.let { url ->
-            MediaPlayer().apply {
-                setDataSource(url)
-                prepareAsync()
-                setOnPreparedListener { start() }
+    private fun show(resp: SceneAnalysisResponse) {
+        when (UserPrefs.getMode(requireContext())) {
+            "text" -> b.resultText.text = resp.text ?: ""
+            "audio" -> resp.audioUrl?.let { play(it) }
+            else -> {
+                b.resultText.text = resp.text ?: ""
+                resp.audioUrl?.let { play(it) }
             }
+        }
+    }
+
+    private fun play(url: String) {
+        MediaPlayer().apply {
+            setDataSource(url)
+            prepareAsync()
+            setOnPreparedListener { start() }
         }
     }
 

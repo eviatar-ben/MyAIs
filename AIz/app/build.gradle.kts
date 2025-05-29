@@ -18,8 +18,13 @@ android {
         viewBinding = true         // to simplify view references
     }
 
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
     kotlinOptions {
-        jvmTarget = "17"  // ✅ Do NOT use "21"
+        jvmTarget = "17"
     }
 
     namespace = "com.example.aiz"

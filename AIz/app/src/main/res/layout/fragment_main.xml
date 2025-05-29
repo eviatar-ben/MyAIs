@@ -4,18 +4,19 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/gray"
     android:padding="16dp">
 
     <ImageView
         android:id="@+id/logoImage"
-        android:layout_width="120dp"
-        android:layout_height="120dp"
-        android:src="@drawable/ic_launcher_foreground"
+        android:layout_width="match_parent"
+        android:layout_height="128dp"
+        android:src="@drawable/logo"
+        android:foregroundGravity="bottom"
         android:contentDescription="Logo"
-        app:layout_constraintBottom_toTopOf="@+id/btnRecord"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"/>
+        app:layout_constraintStart_toStartOf="parent"/>
 
     <Button
         android:id="@+id/btnRecord"
@@ -23,7 +24,11 @@
         android:layout_height="wrap_content"
         android:text="Start Recording"
         android:textSize="18sp"
-        app:layout_constraintTop_toBottomOf="@id/logoImage"
+        android:background="@color/white"
+        android:textColor="@color/dark_gray"
+        app:layout_constraintTop_toTopOf="parent"
+        android:layout_marginBottom="150dp"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
@@ -31,6 +36,8 @@
         android:id="@+id/btnUpload"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:background="@color/white"
+        android:textColor="@color/dark_gray"
         android:text="Upload Video"
         android:textSize="18sp"
         android:layout_marginTop="8dp"
