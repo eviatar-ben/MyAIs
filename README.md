@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="MyAIs Logo" width="200"/>
+  <img src="logo_aiz.png" alt="MyAIs Logo" width="400"/>
 </p>
 
 
