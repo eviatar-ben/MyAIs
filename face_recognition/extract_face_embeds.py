@@ -1,31 +1,28 @@
-# preprocess_faces.py
 import os
-import torch
+import numpy as np
 from deepface import DeepFace
+import cv2
 
-FACES_DIR = "faces"
-EMBEDS_DIR = "face_embeds"
-MODEL_NAME = "VGG-Face"  # You can change this to "Facenet", "ArcFace", etc.
+faces_dir = "faces"
+embeds_dir = "face_embeds"
+os.makedirs(embeds_dir, exist_ok=True)
 
-os.makedirs(EMBEDS_DIR, exist_ok=True)
-
-print(f"Using model: {MODEL_NAME}")
-
-for filename in os.listdir(FACES_DIR):
-    if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-        path = os.path.join(FACES_DIR, filename)
-        print('Processing:', path)
+for filename in os.listdir(faces_dir):
+    if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
+        img_path = os.path.join(faces_dir, filename)
         try:
-            # No 'model=' argument
-            representations = DeepFace.represent(img_path=path, model_name=MODEL_NAME, enforce_detection=True)
-            if not representations:
-                print(f"No face found in {filename}")
-                continue
-
-            embedding = representations[0]["embedding"]
-            name = os.path.splitext(filename)[0]
-            torch.save(torch.tensor(embedding), os.path.join(EMBEDS_DIR, f"{name}.pth"))
-            print(f"Saved embedding for {filename}")
-
+            embedding_objs = DeepFace.represent(img_path=img_path, model_name='ArcFace', enforce_detection=True)
+            if isinstance(embedding_objs, list):
+                # If multiple faces, take the first (or you can loop through all)
+                for idx, emb in enumerate(embedding_objs):
+                    name, _ = os.path.splitext(filename)
+                    out_name = f"{name}_{idx}.npy" if len(embedding_objs) > 1 else f"{name}.npy"
+                    out_path = os.path.join(embeds_dir, out_name)
+                    np.save(out_path, emb["embedding"])
+            else:
+                name, _ = os.path.splitext(filename)
+                out_path = os.path.join(embeds_dir, f"{name}.npy")
+                np.save(out_path, embedding_objs["embedding"])
+            print(f"Processed {filename}")
         except Exception as e:
             print(f"Error processing {filename}: {e}")
