@@ -1,0 +1,5 @@
+Flask
+google-generativeai
+opencv-python
+python-dotenv  # For loading environment variables securely
+gTTS
