@@ -32,7 +32,7 @@
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/MyAIs.git
+git clone https://github.com/eviatar-ben/MyAIs.git
 cd MyAIs
 # Follow additional setup instructions here (e.g., environment setup, model download, etc.)
 
@@ -48,10 +48,10 @@ cd MyAIs
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/yourusername/MyAIs.git
+   git clone https://github.com/eviatar-ben/MyAIs.git
    cd MyAIs
 
-2. Set up the required dependencies.
+2. Set up the required dependencies [DeepFace](https://github.com/serengil/deepface).
 
 3. Obtain access to the Gemini API for Vision-Language Model (VLM) capabilities.
 
@@ -63,11 +63,7 @@ cd MyAIs
 
 ## Future Work
 
-- Enhanced support for different lighting and weather conditions
-
 - Expanded recognition for more complex scenes
 
 - Integration with wearable devices
-
-- Support for multilingual audio feedback
 
