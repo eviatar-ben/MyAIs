@@ -9,6 +9,7 @@ object UserPrefs {
     fun getMode(ctx: Context): String =
         ctx.getSharedPreferences(NAME, Context.MODE_PRIVATE)
             .getString(KEY_MODE, "both")!!
+
     fun setMode(ctx: Context, mode: String) =
         ctx.getSharedPreferences(NAME, Context.MODE_PRIVATE)
             .edit { putString(KEY_MODE, mode) }

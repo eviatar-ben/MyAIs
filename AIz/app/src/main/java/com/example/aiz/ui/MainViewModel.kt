@@ -3,28 +3,40 @@ package com.example.aiz.ui
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
-import com.example.aiz.model.SceneAnalysisResponse
+import com.example.aiz.model.ProcessMediaResponse
 import com.example.aiz.repository.VideoRepository
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.io.File
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = VideoRepository(app)
-    private val _loading = MutableLiveData(false)
-    val loading: LiveData<Boolean> = _loading
-    private val _response = MutableLiveData<SceneAnalysisResponse?>()
-    val response: LiveData<SceneAnalysisResponse?> = _response
-    private val _error = MutableLiveData<String?>()
-    val error: LiveData<String?> = _error
+    private val _loading = MutableStateFlow(false)
+    val loading: StateFlow<Boolean> = _loading.asStateFlow()
 
-    fun uploadVideo(uri: Uri) {
-        _loading.value = true
-        _error.value = null
+    // ONE-SHOT event flow: no replay, new collectors see only new emissions
+    private val _response = MutableSharedFlow<ProcessMediaResponse>(
+        replay = 0,
+        extraBufferCapacity = 1
+    )
+    val response: SharedFlow<ProcessMediaResponse?> = _response.asSharedFlow()
+
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
+
+    fun uploadMedia(uri: Uri, audioFile: File?) {
         viewModelScope.launch {
+            _loading.value = true
+            _error.value = null
             try {
-                _response.value = repo.uploadVideo(uri)
+                val response = repo.uploadMedia(uri, audioFile)
+                _response.emit(response)
             } catch (e: Exception) {
                 _error.value = e.message
             } finally {

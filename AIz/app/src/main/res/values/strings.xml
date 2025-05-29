@@ -1,3 +1,12 @@
 <resources>
     <string name="app_name">AIz</string>
+    <string name="logo_description">Logo</string>
+    <string name="upload_video">Upload Video</string>
+    <string name="start_record">Start Recording</string>
+    <string name="huji">Huji Hackathon</string>
+
+    <!-- Debug -->
+    <string name="ping">Ping</string>
+    <string name="hold_to_speak">Hold to Speak</string>
+    <string name="audio_recorded">Audio Recorded ✓</string>
 </resources>

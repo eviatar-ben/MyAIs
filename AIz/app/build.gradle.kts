@@ -37,6 +37,7 @@ dependencies {
     implementation("com.google.android.material:material:1.8.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.5.1")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.5.1")
+    implementation("androidx.cardview:cardview:1.0.0")
 
     // Retrofit + Moshi for networking
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
