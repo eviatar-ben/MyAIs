@@ -8,6 +8,68 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 from gtts import gTTS
 import tempfile
+import speech_recognition as sr # Import SpeechRecognition
+from pydub import AudioSegment # Import pydub
+
+from google.cloud import aiplatform
+
+HAZARD_DETECTION_PROMPT = """
+You are an AI assistant specialized in providing critical, immediate hazard warnings for a blind person.
+Analyze the provided sequence of video frames to identify any potential dangers or obstacles.
+
+**Focus:** Identify hazards like:
+- Uneven ground (e.g., potholes, cracks, curbs, broken pavement)
+- Obstacles (e.g., objects sticking out, low-hanging branches, parked bikes, trash cans)
+- Changes in elevation (e.g., stairs up/down, ramps, sudden drops)
+- Moving objects (e.g., approaching vehicles, people, pets)
+- Other immediate environmental dangers.
+
+**Output Rule (IMPORTANT):**
+Your response MUST be ONLY a very short, actionable phrase (maximum 6 words).
+If a significant hazard is detected, describe it clearly and concisely.
+If NO significant hazard is detected, your response MUST be: "Path clear."
+
+**Examples of desired output:**
+- "Pothole directly ahead!"
+- "Stairs up front to your left."
+- "Object on right."
+- "Path clear."
+- "Approaching vehicle!"
+- "Low hanging branch ahead."
+
+Now, analyze the frames and provide the warning or 'Path clear'.
+"""
+
+
+OBJECT_DETECTION_PROMPT_TEMPLATE = """
+You are an AI assistant that helps blind individuals locate objects.
+Your task is to analyze the provided sequence of video frames and fulfill the user's specific request.
+
+**User Query:** {user_query}
+
+**Goal:**
+1.  **Locate Object:** Find the object mentioned in the "User Query" within the frames.
+2.  **Describe Position:** Provide a very concise description of the object's relative position (e.g., "to your left," "on the shelf," "straight ahead").
+3.  **Concise Message:** The message should be extremely short and actionable.
+4.  **Default/Not Found:** If the object is not found in the frames, return a specific default string.
+
+**Output Rule (IMPORTANT):**
+Your response MUST be ONLY a very short, actionable phrase (maximum 6 words).
+If the object is found, describe its location.
+If the object is NOT found, your response MUST be: "Object not seen."
+
+**Examples of desired output for User Query "where is the salt jar?":**
+- "Salt jar, far right on shelf."
+- "Salt jar directly ahead."
+- "Object not seen."
+
+**Examples of desired output for User Query "find my keys":**
+- "Keys on table to left."
+- "Keys on floor straight ahead."
+- "Object not seen."
+
+Now, analyze the frames based on the User Query and provide the location or 'Object not seen'.
+"""
 
 # Load environment variables from .env file (if present)
 load_dotenv()
@@ -15,83 +77,86 @@ load_dotenv()
 app = Flask(__name__)
 
 # --- Configure Gemini API ---
-# Load service account key from file (RECOMMENDED FOR PRODUCTION)
-# In a real app, load this from a secure location like Google Secret Manager
-# or environment variables, NOT directly from a file in your repo.
-try:
-    with open('service_account_key.json', 'r') as f:
-        gemini_credentials = json.load(f)
-    genai.configure(credentials=gemini_credentials)
-    print("Gemini API configured successfully.")
-except FileNotFoundError:
-    print("Error: service_account_key.json not found. Ensure it's in the same directory.")
-    exit(1)  # Exit if credentials are not found
+SERVICE_ACCOUNT_KEY_PATH = "service_account_key.json"
+VERTEX_AI_REGION = "us-central1"
+VERTEX_AI_MODEL_ID = "gemini-1.5-flash"
 
-# Initialize the generative model
-# Use a multimodal model that supports video input (e.g., gemini-pro-vision, gemini-1.5-flash)
-# As of current Gemini Pro Vision only supports images for now. For video, you would typically
-# process it into keyframes or use specialized video models when they become available.
-# For simplicity, we'll assume sending a series of images (keyframes) for now.
-# NOTE: Gemini 1.5 Flash and Pro are the most capable models for multimodal input.
-# You might need to adjust the model name based on the latest available models that
-# support video processing. For general visual tasks with image sequences, 'gemini-1.5-flash' is good.
-model = genai.GenerativeModel('gemini-1.5-flash')  # Or 'gemini-1.5-pro' for more advanced reasoning
+def authenticate_gcp(service_account_path):
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = service_account_path
+    with open(service_account_path, 'r') as f:
+        project_id = json.load(f).get("project_id")
+    aiplatform.init(project=project_id, location=VERTEX_AI_REGION)
+    return project_id
 
+def load_gemini_model(model_id):
+    return genai.GenerativeModel(
+        model_name=model_id,
+        generation_config={"temperature": 0.4}
+    )
 
-# --- Helper Function for Video Processing ---
-def extract_keyframes(video_bytes, interval_ms=500, max_frames=20):
-    """
-    Extracts keyframes from a video byte stream.
-    Args:
-        video_bytes (bytes): The raw bytes of the video file.
-        interval_ms (int): Interval in milliseconds to extract frames.
-        max_frames (int): Maximum number of frames to extract.
-    Returns:
-        list: A list of base64 encoded image strings (JPEG format).
-    """
-    keyframes = []
-    video_stream = io.BytesIO(video_bytes)
+def base64_to_image_part(b64_image):
+    return {
+        "mime_type": "image/jpeg",
+        "data": base64.b64decode(b64_image)
+    }
 
-    # Write to a temporary file because cv2.VideoCapture needs a file path
-    # In a production environment, consider using a cloud storage bucket
-    # for larger files or direct in-memory processing if opencv supports it more directly.
+def run_gemini_inference(model, image_parts, prompt):
+    contents = [prompt] + image_parts
+    response = model.generate_content(contents)
+    return response.text.strip() if response and response.text else None
+
+def synthesize_speech_to_base64(text):
+    tts = gTTS(text=text, lang='en')
+    with io.BytesIO() as audio_bytes_io:
+        tts.write_to_fp(audio_bytes_io)
+        audio_bytes_io.seek(0)
+        audio_base64 = base64.b64encode(audio_bytes_io.read()).decode("utf-8")
+    return audio_base64
+
+authenticate_gcp(SERVICE_ACCOUNT_KEY_PATH)
+model = load_gemini_model(VERTEX_AI_MODEL_ID)
+
+def extract_keyframes(video_bytes, threshold=0.6, max_frames=30, target_width=320, target_height=240):
+    keyframes_list = []
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=True) as temp_video_file:
         temp_video_file.write(video_bytes)
-        temp_video_file_path = temp_video_file.name
-
-        cap = cv2.VideoCapture(temp_video_file_path)
+        cap = cv2.VideoCapture(temp_video_file.name)
 
         if not cap.isOpened():
             print("Error: Could not open video file.")
             return []
 
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        if fps == 0:
-            print("Warning: Could not get FPS, assuming 30 FPS.")
-            fps = 30
+        success, prev_frame = cap.read()
+        if not success:
+            cap.release()
+            print("Error: Could not read first frame.")
+            return []
 
-        frame_count = 0
-        current_time_ms = 0
+        prev_frame = cv2.resize(prev_frame, (target_width, target_height))
+        prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
+        prev_hist = cv2.calcHist([prev_gray], [0], None, [256], [0, 256])
+        prev_hist = cv2.normalize(prev_hist, prev_hist).flatten()
+
+        _, buffer = cv2.imencode('.jpg', prev_frame)
+        keyframes_list.append(base64.b64encode(buffer).decode('utf-8'))
 
         while True:
-            cap.set(cv2.CAP_PROP_POS_MSEC, current_time_ms)
-            ret, frame = cap.read()
-
-            if not ret or frame_count >= max_frames:
+            success, frame = cap.read()
+            if not success or len(keyframes_list) >= max_frames:
                 break
+            frame = cv2.resize(frame, (target_width, target_height))
+            curr_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            curr_hist = cv2.calcHist([curr_gray], [0], None, [256], [0, 256])
+            curr_hist = cv2.normalize(curr_hist, curr_hist).flatten()
+            diff = cv2.compareHist(prev_hist, curr_hist, cv2.HISTCMP_CORREL)
 
-            # Encode frame to JPEG
-            _, buffer = cv2.imencode('.jpg', frame)
-            jpg_as_text = base64.b64encode(buffer).decode('utf-8')
-            keyframes.append(jpg_as_text)
-
-            current_time_ms += interval_ms
-            frame_count += 1
+            if diff < threshold:
+                _, buffer = cv2.imencode('.jpg', frame)
+                keyframes_list.append(base64.b64encode(buffer).decode('utf-8'))
+                prev_hist = curr_hist
 
         cap.release()
-
-    print(f"Extracted {len(keyframes)} keyframes.")
-    return keyframes
+    return keyframes_list
 
 
 # --- API Endpoint ---
@@ -99,55 +164,66 @@ def extract_keyframes(video_bytes, interval_ms=500, max_frames=20):
 def process_video():
     if 'video' not in request.files:
         return jsonify({"error": "No video file provided"}), 400
-    if 'prompt' not in request.form:
-        return jsonify({"error": "No prompt provided"}), 400
+
+    if 'audio_prompt' in request.form:
+        audio_file = request.files['audio_prompt']  # Get the audio file
+        audio_bytes = audio_file.read()
+        user_prompt_text = "unintelligible speech or no prompt"  # Default in case ASR fails
+        r = sr.Recognizer()
+        try:
+            # pydub can help convert various formats to a format recognize_google likes (like WAV)
+            audio_segment = AudioSegment.from_file(io.BytesIO(audio_bytes))
+            # Export to WAV in memory for SpeechRecognition
+            wav_buffer = io.BytesIO()
+            audio_segment.export(wav_buffer, format="wav")
+            wav_buffer.seek(0)  # Rewind to beginning
+
+            with sr.AudioFile(wav_buffer) as source:
+                audio_data = r.record(source)  # Read the entire audio file
+
+            print("Attempting ASR...")
+            user_prompt_text = r.recognize_google(audio_data, language="en-US")  # You can specify language
+            print(f"ASR recognized: '{user_prompt_text}'")
+
+        except sr.UnknownValueError:
+            print("ASR could not understand audio")
+            user_prompt_text = "unintelligible speech"
+        except sr.RequestError as e:
+            print(f"Could not request results from ASR service; {e}")
+            user_prompt_text = "ASR service error"
+        except Exception as e:  # Catch pydub or other potential audio processing errors
+            print(f"General error during audio processing for ASR: {e}")
+            user_prompt_text = "audio processing failed"
+        print("User prompt transcript: ", user_prompt_text)
+        prompt_text = OBJECT_DETECTION_PROMPT_TEMPLATE.format(user_query=user_prompt_text)
+    else:
+        prompt_text = HAZARD_DETECTION_PROMPT
 
     video_file = request.files['video']
-    prompt_text = request.form['prompt']
 
     # Read video bytes
     video_bytes = video_file.read()
 
     # Extract keyframes from the video
-    keyframes = extract_keyframes(video_bytes, interval_ms=300,
-                                  max_frames=30)  # Adjust interval and max_frames as needed
+    keyframes_b64 = extract_keyframes(video_bytes)  # Adjust interval and max_frames as needed
 
-    if not keyframes:
+    if not keyframes_b64:
         return jsonify({"error": "Failed to extract keyframes from video"}), 500
 
-    # Prepare content for Gemini API
-    # The content list alternates between text and image parts
-    # Gemini 1.5 models are excellent for this.
-    parts = [prompt_text]
-    for frame in keyframes:
-        parts.append({
-            'mime_type': 'image/jpeg',
-            'data': base64.b64decode(frame)  # Decode base64 back to bytes for Gemini API
-        })
-
+    image_parts = [base64_to_image_part(b64) for b64 in keyframes_b64]
+    # Step 2: Run Gemini inference
     try:
-        # Call Gemini API
-        print("Sending request to Gemini API...")
-        response = model.generate_content(parts)
-
-        # Extract the text response from Gemini
-        gemini_response_text = response.text
-        print(f"Gemini response: {gemini_response_text}")
-
-        # Generate audio from the Gemini response
-        tts = gTTS(text=gemini_response_text, lang='en', slow=False)  # You can adjust language
-
-        audio_buffer = io.BytesIO()
-        tts.write_to_fp(audio_buffer)
-        audio_buffer.seek(0)  # Rewind to the beginning
-
-        # Encode audio to base64 for sending back to Android
-        audio_base64 = base64.b64encode(audio_buffer.read()).decode('utf-8')
+        print("querying Gemini")
+        gemini_response = run_gemini_inference(model, image_parts, prompt_text)
+        if not gemini_response:
+            raise RuntimeError("Gemini returned no result.")
+        print("Response: " + gemini_response)
+        audio_b64 = synthesize_speech_to_base64(gemini_response)
 
         return jsonify({
             "message": "Processing successful",
-            "gemini_text_response": gemini_response_text,
-            "audio_base64": audio_base64
+            "gemini_text_response": gemini_response,
+            "audio_base64": audio_b64
         }), 200
 
     except Exception as e:
@@ -158,4 +234,4 @@ def process_video():
 if __name__ == '__main__':
     # For development, you can run on a specific port.
     # For production, use a WSGI server like Gunicorn or uWSGI.
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5001, debug=True)
