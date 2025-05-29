@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="logo.png" alt="MyAIs Logo" width="200"/>
+</p>
+
+
 # MyAIs
 
 **AIz** is an innovative application that leverages cutting-edge **Vision-Language Models (VLMs)** and **Gemini's multimodal capabilities** to assist visually impaired individuals. By providing real-time audio alerts about potential hazards and recognizing familiar faces, AIz enhances users’ safety, awareness, and independence.
